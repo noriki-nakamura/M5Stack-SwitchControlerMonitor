@@ -38,12 +38,7 @@ public:
         // Byte 0: Button bits (bit0=Y, bit1=B, bit2=A, bit3=X, bit4=L, bit5=R, bit6=ZL, bit7=ZR)
         // Byte 1: Button bits (bit0=-, bit1=+, bit2=LClick, bit3=RClick, bit4=Home, bit5=Capture)
         // Byte 2: DPAD (Hat Switch) low nibble? Or Byte 2 is HAT + bits.
-        // Let's assume a common generic HID layout first.
-        
-        // Note: Without the actual device descriptor, this is a best-guess.
-        // The LCD generic hex dump will allow the user to tell us the mapping if this is wrong.
-        
-        // Example Mapping A:
+
         padState.btnY = (buf[0] & 0x01);
         padState.btnB = (buf[0] & 0x02);
         padState.btnA = (buf[0] & 0x04);
