@@ -70,7 +70,7 @@ void setup() {
     M5.begin();
     M5.Power.begin();
     M5.Lcd.setTextSize(2);
-    M5.Lcd.println("M5 Switch Monitor");
+    M5.Lcd.println("M5 Controller Monitor");
     M5.Lcd.setTextSize(1);
     M5.Lcd.println("Init USB Host...");
 
