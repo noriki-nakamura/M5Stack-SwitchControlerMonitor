@@ -7,6 +7,7 @@
 USB Usb;
 USBHub Hub(&Usb);
 HIDUniversal Hid(&Usb);
+String lastTxData = "";
 
 // Data structure to hold controller state
 struct ControllerState {
@@ -64,10 +65,17 @@ public:
     }
 } parser;
 
-// --- Setup & Loop ---
+// Wireless Communication Globals
+unsigned long lastSendTime = 0;
+const unsigned long SEND_INTERVAL_MS = 200;
 
+// --- Setup & Loop ---
 void setup() {
-    M5.begin();
+    // Disable USB Serial (3rd arg = false) to suppress debug output
+    // M5.begin(LCDEnable, SDEnable, SerialEnable, I2CEnable);
+    // I2C must be enabled for Power Management (IP5306)
+    M5.begin(true, true, false, true);
+
     M5.Power.begin();
     M5.Lcd.setTextSize(2);
     M5.Lcd.println("M5 Controller Monitor");
@@ -88,13 +96,20 @@ void setup() {
     }
     
     M5.Lcd.println("Waiting for controller...");
+
+    // Initialize Serial2 for Wireless Module
+    // Rx: 16, Tx: 17, 115200bps
+    Serial2.begin(115200, SERIAL_8N1, 16, 17);
+    M5.Lcd.println("Serial2 Started (115200)");
 }
 
 void drawControllerInfo() {
-    M5.Lcd.setCursor(0, 40);
-    M5.Lcd.fillRect(0, 40, 320, 200, BLACK); // Clear area
+    // Clear everything below title
+    M5.Lcd.setCursor(0, 15);
+    M5.Lcd.fillRect(0, 15, 320, 220, BLACK); 
 
     // Raw Hex Dump (First 8 bytes)
+    M5.Lcd.setCursor(0, 30);
     M5.Lcd.setTextColor(YELLOW);
     M5.Lcd.print("RAW: ");
     for(int i=0; i<8 && i<padState.rawLen; i++) {
@@ -104,7 +119,7 @@ void drawControllerInfo() {
     M5.Lcd.setTextColor(WHITE);
     
     // Buttons
-    M5.Lcd.setCursor(0, 60);
+    M5.Lcd.setCursor(0, 50);
     M5.Lcd.printf("A:%d B:%d X:%d Y:%d\n", padState.btnA, padState.btnB, padState.btnX, padState.btnY);
     M5.Lcd.printf("L:%d R:%d ZL:%d ZR:%d\n", padState.btnL, padState.btnR, padState.btnZL, padState.btnZR);
     M5.Lcd.printf("-:%d +:%d H:%d C:%d\n", padState.btnMinus, padState.btnPlus, padState.btnHome, padState.btnCapture);
@@ -126,13 +141,13 @@ void drawControllerInfo() {
     M5.Lcd.printf("LS:%d RS:%d DP:%s\n", padState.btnLStick, padState.btnRStick, dpadStr.c_str());
     
     // Sticks
-    M5.Lcd.setCursor(0, 110);
+    M5.Lcd.setCursor(0, 100);
     M5.Lcd.printf("L Stick: X=%3d Y=%3d\n", padState.lX, padState.lY);
     M5.Lcd.printf("R Stick: X=%3d Y=%3d\n", padState.rX, padState.rY);
 
     // Visual Stick Representation (Simple Box)
     // Left Stick
-    int cx = 60, cy = 190, r = 25;
+    int cx = 60, cy = 160, r = 25;
     M5.Lcd.drawRect(cx-r, cy-r, r*2, r*2, DARKGREY);
     int lx = map(padState.lX, 0, 255, -r, r);
     int ly = map(padState.lY, 0, 255, -r, r);
@@ -160,6 +175,12 @@ void drawControllerInfo() {
         M5.Lcd.fillCircle(cx, cy, 4, DARKGREY);
     }
     M5.Lcd.setCursor(cx-15, cy+r+5); M5.Lcd.print("DPAD");
+
+    // Display sent data
+    M5.Lcd.setCursor(0, 215);
+    M5.Lcd.setTextColor(CYAN);
+    M5.Lcd.print("TX: " + lastTxData);
+    M5.Lcd.setTextColor(WHITE);
 }
 
 unsigned long lastDraw = 0;
@@ -172,5 +193,62 @@ void loop() {
     if (millis() - lastDraw > 33) {
         drawControllerInfo();
         lastDraw = millis();
+    }
+
+    // Wireless Data Transmission (every 200ms)
+    if (millis() - lastSendTime >= SEND_INTERVAL_MS) {
+        lastSendTime = millis();
+        
+        // 1. Clear receive buffer (ignore incoming data like "OK")
+        while (Serial2.available()) {
+            Serial2.read();
+        }
+
+        // 2. Prepare Data Packet
+        // Byte 0: A, B, X, Y, L, R, ZL, ZR
+        uint8_t byte0 = 0;
+        if (padState.btnA)  byte0 |= 0x01;
+        if (padState.btnB)  byte0 |= 0x02;
+        if (padState.btnX)  byte0 |= 0x04;
+        if (padState.btnY)  byte0 |= 0x08;
+        if (padState.btnL)  byte0 |= 0x10;
+        if (padState.btnR)  byte0 |= 0x20;
+        if (padState.btnZL) byte0 |= 0x40;
+        if (padState.btnZR) byte0 |= 0x80;
+
+        // Byte 1: -, +, Home, Cap, LClk, RClk
+        uint8_t byte1 = 0;
+        if (padState.btnMinus)   byte1 |= 0x01;
+        if (padState.btnPlus)    byte1 |= 0x02;
+        if (padState.btnHome)    byte1 |= 0x04;
+        if (padState.btnCapture) byte1 |= 0x08;
+        if (padState.btnLStick)  byte1 |= 0x10; // Click
+        if (padState.btnRStick)  byte1 |= 0x20; // Click
+
+        // Byte 2: DPAD (0=Neutral, 1=UP, ... 8=UP-LEFT)
+        // Original: 0=UP, 1=UP-R ... 7=UP-L, 0x0F=Neutral
+        uint8_t byte2 = 0;
+        if (padState.dpad == 0x0F || padState.dpad == 8) {
+             byte2 = 0; // Neutral
+        } else {
+             byte2 = (padState.dpad & 0x0F) + 1;
+        }
+
+        // Byte 3-6: Sticks
+        uint8_t byte3 = padState.lX;
+        uint8_t byte4 = padState.lY;
+        uint8_t byte5 = padState.rX;
+        uint8_t byte6 = padState.rY;
+
+        // 3. Send Formatted String
+        // Format: "XX,XX,XX,XX,XX,XX,XX\r\n"
+        char buf[64];
+        snprintf(buf, sizeof(buf), "%02X,%02X,%02X,%02X,%02X,%02X,%02X\r\n",
+            byte0, byte1, byte2, byte3, byte4, byte5, byte6);
+        Serial2.print(buf);
+        
+        // Update LCD display variable
+        lastTxData = String(buf);
+        lastTxData.trim(); // Remove newline for clean display
     }
 }
