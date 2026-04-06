@@ -1,6 +1,6 @@
-# M5Stack Switch Controller Monitor
+# M5Stack Switch Controller to CoRE Wireless Sender
 
-M5Stack に USB Host Shield を接続し、Nintendo Switch 用コントローラー (HORI PAD TURBO 等) の入力値をリアルタイムで LCD に表示するモニタリングツールです。
+M5Stack に USB Host Shield を接続し、Nintendo Switch 用コントローラー (HORI PAD TURBO 等) の入力値を CoRE で支給される無線送信モジュール向けに変換・送信するプログラムです。
 
 現在は `M5Stack Core2` を優先対象としており、`USB Host Shield Library 2.0` ベースで `M5Stack USB Module v1.2` を利用します。
 UI/電源制御は `M5Unified` 前提で実装しており、`M5Stack.h` ではなく `M5Unified.h` を使用します。

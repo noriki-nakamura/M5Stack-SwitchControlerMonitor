@@ -115,7 +115,7 @@ void setup() {
 
     M5.Display.setRotation(1);
     M5.Display.setTextSize(2);
-    M5.Display.println("M5 Controller Monitor");
+    M5.Display.println("M5 Switch2CoRE Sender");
     M5.Display.setTextSize(1);
     M5.Display.println("Init USB Host...");
     M5.Display.printf("DIP: SS CH%d(GPIO%d) / INT CH%d(GPIO%d)\n",

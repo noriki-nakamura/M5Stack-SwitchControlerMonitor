@@ -35,7 +35,7 @@ $UartPinMap = @{
 }
 
 $FQBN = $BoardMap[$Board]
-$SketchName = "M5Stack-SwitchControlerMonitor.ino"
+$SketchName = "M5Stack-SwitchController2CoREWirelessSender.ino"
 $SelectedSsGpio = $SsPinMap[$Board][$SsChannel - 1]
 $SelectedIntGpio = $IntPinMap[$Board][$IntChannel - 1]
 $SelectedMisoGpio = $MisoPinMap[$Board]
