@@ -11,6 +11,15 @@ param (
 
 $ErrorActionPreference = "Stop"
 
+# Load settings from config.json if exists
+$ConfigFile = Join-Path $PSScriptRoot "config.json"
+$Config = if (Test-Path $ConfigFile) { Get-Content $ConfigFile | ConvertFrom-Json } else { @{} }
+
+# Override Board if not specified in arguments but present in config
+if (!$PSBoundParameters.ContainsKey('Board') -and $Config.Board) {
+    $Board = $Config.Board
+}
+
 $CoreVersion = "3.2.5"
 $BoardMap = @{
     core  = "m5stack:esp32:m5stack_core"
@@ -42,7 +51,10 @@ $SelectedMisoGpio = $MisoPinMap[$Board]
 $SelectedUartRxGpio = $UartPinMap[$Board][0]
 $SelectedUartTxGpio = $UartPinMap[$Board][1]
 
-$UserArduinoDir = Join-Path $HOME "Documents/Arduino"
+# Set Arduino directory (priority: config.json > default)
+$DefaultArduinoDir = Join-Path $HOME "Documents/Arduino"
+$UserArduinoDir = if ($Config.ArduinoDir) { $Config.ArduinoDir } else { $DefaultArduinoDir }
+
 $UserLibrariesDir = Join-Path $UserArduinoDir "libraries"
 $UsbHostShieldDir = Join-Path $UserLibrariesDir "USB_Host_Shield_Library_2.0"
 
