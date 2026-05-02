@@ -9,7 +9,7 @@ on:
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    runs-on: windows-latest
     strategy:
       fail-fast: false
       matrix:
@@ -31,31 +31,29 @@ jobs:
         uses: arduino/setup-arduino-cli@v2
 
       - name: Configure board manager URL
-        run: |
-          arduino-cli config add board_manager.additional_urls \
-            https://m5stack.oss-cn-shenzhen.aliyuncs.com/resource/arduino/package_m5stack_index.json
+        run: arduino-cli config add board_manager.additional_urls https://m5stack.oss-cn-shenzhen.aliyuncs.com/resource/arduino/package_m5stack_index.json
 
       - name: Build
         shell: pwsh
         run: |
-          ./build.ps1 `
+          .\build.ps1 `
             -ExportBinaries `
             -Board ${{ matrix.board }} `
             -SsChannel ${{ matrix.ss_ch }} `
             -IntChannel ${{ matrix.int_ch }}
 
       - name: Collect and rename binary
-        shell: bash
+        shell: pwsh
         run: |
-          FQBN="m5stack:esp32:m5stack_${{ matrix.board }}"
-          FQBN_DIR="${FQBN//:/.}"
-          BIN_SRC="build/${FQBN_DIR}/M5Stack-SwitchController2CoREWirelessSender.ino.bin"
-          BIN_DST="SwitchSender_${{ matrix.bin_suffix }}.bin"
-          echo "Source: $BIN_SRC"
-          echo "Destination: $BIN_DST"
-          ls -lh "build/${FQBN_DIR}/" || true
-          cp "$BIN_SRC" "$BIN_DST"
-          echo "Binary size: $(du -h $BIN_DST | cut -f1)"
+          $fqbn = "m5stack:esp32:m5stack_${{ matrix.board }}"
+          $fqbnDir = $fqbn -replace ":", "."
+          $binSrc = "build\$fqbnDir\M5Stack-SwitchController2CoREWirelessSender.ino.bin"
+          $binDst = "SwitchSender_${{ matrix.bin_suffix }}.bin"
+          Write-Output "Source: $binSrc"
+          Write-Output "Destination: $binDst"
+          Get-ChildItem "build\$fqbnDir\" | Format-List
+          Copy-Item $binSrc $binDst
+          Write-Output "Binary size: $((Get-Item $binDst).Length) bytes"
 
       - name: Upload artifact
         uses: actions/upload-artifact@v7
