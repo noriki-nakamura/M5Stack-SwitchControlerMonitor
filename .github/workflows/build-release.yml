@@ -48,7 +48,18 @@ jobs:
           $fqbn = "m5stack:esp32:m5stack_${{ matrix.board }}"
           $fqbnDir = $fqbn -replace ":", "."
           $buildDir = "build\$fqbnDir"
-          $prefix = "SwitchSender_${{ matrix.bin_suffix }}"
+          
+          # Determine version string (SHA7 for PRs/Push, Tag name for Tags)
+          $ver = ""
+          if ("${{ github.event_name }}" -eq "pull_request") {
+              $ver = "${{ github.event.pull_request.head.sha }}".Substring(0, 7)
+          } elseif ("${{ github.ref }}".StartsWith("refs/tags/")) {
+              $ver = "${{ github.ref_name }}"
+          } else {
+              $ver = "${{ github.sha }}".Substring(0, 7)
+          }
+          
+          $prefix = "SwitchSender_${ver}_${{ matrix.bin_suffix }}"
           
           Copy-Item "$buildDir\M5Stack-SwitchController2CoREWirelessSender.ino.bin" "$prefix.bin"
           Copy-Item "$buildDir\M5Stack-SwitchController2CoREWirelessSender.ino.bootloader.bin" "$prefix.bootloader.bin"
@@ -61,7 +72,7 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: SwitchSender_${{ matrix.bin_suffix }}
-          path: SwitchSender_${{ matrix.bin_suffix }}*.bin
+          path: SwitchSender_*_${{ matrix.bin_suffix }}*.bin
           retention-days: 90
 
   release:
