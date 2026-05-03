@@ -148,10 +148,7 @@ function Update-UsbHostShieldLibrary {
         "MAKE_PIN(P34, 34); // Extra INT for M5Stack Core/Core2",
         "MAKE_PIN(P35, 35); // Extra INT for M5Stack Core/Core2",
         "MAKE_PIN(P38, 38); // Core2 MISO",
-        "MAKE_PIN(P1,   1); // CoreS3 SS CH1",
-        "MAKE_PIN(P10, 10); // CoreS3 INT CH1",
-        "MAKE_PIN(P36, 36); // CoreS3 SCK",
-        "MAKE_PIN(P37, 37); // CoreS3 MOSI"
+        "MAKE_PIN(P10, 10); // CoreS3 INT CH1 (not in CORES3 block of avrpins.h)"
     )
 
     $missingPins = @()
@@ -176,8 +173,21 @@ function Update-UsbHostShieldLibrary {
 
     $usbCoreText = Get-Content -Path $usbCorePath -Raw
     if ($usbCoreText -notmatch "USB_HOST_SHIELD_SS_TYPE") {
-        $needle = "typedef MAX3421e<P5, P17> MAX3421E; // ESP32 boards"
-        $replacement = @"
+        # CoreS3 ブロックにもガードを追加
+        $needleCoreS3 = "typedef MAX3421e<P1, P14> MAX3421E; // M5Stack Core S3"
+        $replacementCoreS3 = @"
+#ifndef USB_HOST_SHIELD_SS_TYPE
+#define USB_HOST_SHIELD_SS_TYPE P1
+#endif
+#ifndef USB_HOST_SHIELD_INT_TYPE
+#define USB_HOST_SHIELD_INT_TYPE P14
+#endif
+typedef MAX3421e<USB_HOST_SHIELD_SS_TYPE, USB_HOST_SHIELD_INT_TYPE> MAX3421E; // M5Stack Core S3 (customizable)
+"@
+
+        # ESP32 汎用ブロックにもガードを追加
+        $needleEsp32 = "typedef MAX3421e<P5, P17> MAX3421E; // ESP32 boards"
+        $replacementEsp32 = @"
 #ifndef USB_HOST_SHIELD_SS_TYPE
 #define USB_HOST_SHIELD_SS_TYPE P5
 #endif
@@ -187,13 +197,22 @@ function Update-UsbHostShieldLibrary {
 typedef MAX3421e<USB_HOST_SHIELD_SS_TYPE, USB_HOST_SHIELD_INT_TYPE> MAX3421E; // ESP32 boards (customizable)
 "@
 
-        if ($usbCoreText.Contains($needle)) {
-            $usbCoreText = $usbCoreText.Replace($needle, $replacement.Trim())
+        $patched = $false
+        if ($usbCoreText.Contains($needleCoreS3)) {
+            $usbCoreText = $usbCoreText.Replace($needleCoreS3, $replacementCoreS3.Trim())
+            $patched = $true
+        }
+        if ($usbCoreText.Contains($needleEsp32)) {
+            $usbCoreText = $usbCoreText.Replace($needleEsp32, $replacementEsp32.Trim())
+            $patched = $true
+        }
+
+        if ($patched) {
             Set-Content -Path $usbCorePath -Value $usbCoreText -Encoding UTF8
-            Write-Output "Patched UsbCore.h for customizable ESP32 SS/INT pins."
+            Write-Output "Patched UsbCore.h for customizable ESP32/CoreS3 SS/INT pins."
         }
         else {
-            throw "Expected ESP32 typedef was not found in UsbCore.h"
+            throw "Expected ESP32/CoreS3 typedef was not found in UsbCore.h"
         }
     }
 }
