@@ -47,19 +47,21 @@ jobs:
         run: |
           $fqbn = "m5stack:esp32:m5stack_${{ matrix.board }}"
           $fqbnDir = $fqbn -replace ":", "."
-          $binSrc = "build\$fqbnDir\M5Stack-SwitchController2CoREWirelessSender.ino.bin"
-          $binDst = "SwitchSender_${{ matrix.bin_suffix }}.bin"
-          Write-Output "Source: $binSrc"
-          Write-Output "Destination: $binDst"
-          Get-ChildItem "build\$fqbnDir\" | Format-List
-          Copy-Item $binSrc $binDst
-          Write-Output "Binary size: $((Get-Item $binDst).Length) bytes"
+          $buildDir = "build\$fqbnDir"
+          $prefix = "SwitchSender_${{ matrix.bin_suffix }}"
+          
+          Copy-Item "$buildDir\M5Stack-SwitchController2CoREWirelessSender.ino.bin" "$prefix.bin"
+          Copy-Item "$buildDir\M5Stack-SwitchController2CoREWirelessSender.ino.bootloader.bin" "$prefix.bootloader.bin"
+          Copy-Item "$buildDir\M5Stack-SwitchController2CoREWirelessSender.ino.partitions.bin" "$prefix.partitions.bin"
+          
+          Write-Output "Collected binaries with prefix: $prefix"
+          Get-ChildItem "$prefix*" | Select-Object Name, Length
 
       - name: Upload artifact
         uses: actions/upload-artifact@v7
         with:
           name: SwitchSender_${{ matrix.bin_suffix }}
-          path: SwitchSender_${{ matrix.bin_suffix }}.bin
+          path: SwitchSender_${{ matrix.bin_suffix }}*.bin
           retention-days: 90
 
   release:

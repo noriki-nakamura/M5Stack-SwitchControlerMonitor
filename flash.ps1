@@ -67,18 +67,47 @@ Example: .\flash.ps1 -BinDir C:\Downloads\SwitchSender
 }
 
 # Verify .bin file exists
-$BinFile = Join-Path $BinDir "$SketchName.ino.bin"
-if (!(Test-Path $BinFile)) {
-    $bins = Get-ChildItem -Path $BinDir -Filter "*.ino.bin" -ErrorAction SilentlyContinue
-    if ($bins.Count -eq 0) {
-        Write-Error "No .ino.bin file found in: $BinDir"
-        exit 1
-    }
-    $BinFile = $bins[0].FullName
-    Write-Output "Found binary: $BinFile"
+$BinFile = ""
+if (Test-Path $BinDir -PathType Leaf) {
+    # Directly pointed to a file
+    $BinFile = (Get-Item $BinDir).FullName
 }
 else {
+    # Search in directory
+    $SketchBin = Join-Path $BinDir "$SketchName.ino.bin"
+    if (Test-Path $SketchBin) {
+        $BinFile = $SketchBin
+    }
+    else {
+        Write-Output "Searching for .bin files in: $BinDir"
+        $bins = Get-ChildItem -Path $BinDir -Filter "*.bin" -Recurse -ErrorAction SilentlyContinue | Where-Object { $_.Name -notmatch "bootloader|partitions" }
+        if ($bins.Count -eq 0) {
+            Write-Error "No .bin file found in: $BinDir"
+            Write-Output "Files in directory:"
+            Get-ChildItem -Path $BinDir | Select-Object Name
+            exit 1
+        }
+        $BinFile = $bins[0].FullName
+    }
+}
+
+if ($BinFile -ne "") {
     Write-Output "Binary: $BinFile"
+    
+    # Check for related files (required for ESP32)
+    $BaseName = $BinFile -replace "\.bin$", ""
+    $BootFile = "$BaseName.bootloader.bin"
+    $PartFile = "$BaseName.partitions.bin"
+    
+    if (!(Test-Path $BootFile) -or !(Test-Path $PartFile)) {
+        Write-Warning "Missing bootloader or partitions file in the same directory."
+        Write-Warning "Expected: $(Split-Path $BootFile -Leaf) and $(Split-Path $PartFile -Leaf)"
+        Write-Warning "Uploading might fail if these are required for your board."
+    }
+}
+else {
+    Write-Error "Could not determine binary file path."
+    exit 1
 }
 
 # Detect COM port
@@ -107,7 +136,7 @@ if ($Port -eq "") {
 Write-Output "Port: $Port"
 Write-Output "Uploading pre-built binary..."
 
-arduino-cli upload -p $Port --fqbn $FQBN --input-dir $BinDir
+arduino-cli upload -p $Port --fqbn $FQBN --input-file $BinFile
 
 if ($LASTEXITCODE -eq 0) {
     Write-Output "Upload successful!"
