@@ -59,6 +59,7 @@ jobs:
             -IntChannel ${{ matrix.int_ch }}
 
       - name: Collect and rename binary
+        id: collect
         shell: pwsh
         run: |
           $fqbn = "m5stack:esp32:m5stack_${{ matrix.board }}"
@@ -83,11 +84,12 @@ jobs:
           
           Write-Output "Collected binaries with prefix: $prefix"
           Get-ChildItem "$prefix*" | Select-Object Name, Length
+          echo "version=$ver" >> $env:GITHUB_OUTPUT
 
       - name: Upload artifact
         uses: actions/upload-artifact@v7
         with:
-          name: SwitchSender_${{ matrix.bin_suffix }}
+          name: SwitchSender_${{ steps.collect.outputs.version }}_${{ matrix.bin_suffix }}
           path: SwitchSender_*_${{ matrix.bin_suffix }}*.bin
           retention-days: 90
 
