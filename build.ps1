@@ -142,38 +142,71 @@ function Update-UsbHostShieldLibrary {
     }
 
     $avrPinsText = Get-Content -Path $avrPinsPath -Raw
-    $requiredPinLines = @(
-        "MAKE_PIN(P13, 13); // Extra SS for M5Stack Core",
-        "MAKE_PIN(P33, 33); // Extra SS for M5Stack Core2",
-        "MAKE_PIN(P34, 34); // Extra INT for M5Stack Core/Core2",
-        "MAKE_PIN(P35, 35); // Extra INT for M5Stack Core/Core2",
-        "MAKE_PIN(P38, 38); // Core2 MISO",
-        "MAKE_PIN(P10, 10); // CoreS3 INT CH1 (not in CORES3 block of avrpins.h)"
+    $avrPinsModified = $false
+
+    # --- Patch 1: Core/Core2 用ピン (ESP32 汎用ブロックに挿入) ---
+    # コメントは除いて MAKE_PIN(Pxx, nn) のみで存在確認する
+    $esp32PinDefs = @(
+        @{ Pin = "P13"; Num = 13; Comment = "Extra SS for M5Stack Core" },
+        @{ Pin = "P33"; Num = 33; Comment = "Extra SS for M5Stack Core2" },
+        @{ Pin = "P34"; Num = 34; Comment = "Extra INT for M5Stack Core/Core2" },
+        @{ Pin = "P35"; Num = 35; Comment = "Extra INT for M5Stack Core/Core2" },
+        @{ Pin = "P38"; Num = 38; Comment = "Core2 MISO" }
     )
 
-    $missingPins = @()
-    foreach ($line in $requiredPinLines) {
-        if ($avrPinsText -notmatch [regex]::Escape($line)) {
-            $missingPins += $line
+    $missingEsp32Pins = @()
+    foreach ($def in $esp32PinDefs) {
+        $pattern = "MAKE_PIN\($($def.Pin),\s*$($def.Num)\)"
+        if ($avrPinsText -notmatch $pattern) {
+            $missingEsp32Pins += "MAKE_PIN($($def.Pin), $($def.Num)); // $($def.Comment)"
         }
     }
 
-    if ($missingPins.Count -gt 0) {
-        $markerPattern = 'MAKE_PIN\(P17,\s*17\);\s*// INT'
-        $regex = [regex]$markerPattern
-        if (!$regex.IsMatch($avrPinsText)) {
-            throw "Could not find insertion marker in avrpins.h: $markerPattern"
+    if ($missingEsp32Pins.Count -gt 0) {
+        # ESP32 汎用ブロックの末尾マーカー (MAKE_PIN(P17, 17); // INT) の後に挿入
+        $esp32MarkerPattern = 'MAKE_PIN\(P17,\s*17\);\s*// INT'
+        $esp32Regex = [regex]$esp32MarkerPattern
+        if (!$esp32Regex.IsMatch($avrPinsText)) {
+            throw "Could not find ESP32 insertion marker in avrpins.h: $esp32MarkerPattern"
         }
+        $insertion = ($missingEsp32Pins -join "`r`n")
+        $avrPinsText = $esp32Regex.Replace($avrPinsText, { param($m) $m.Value + "`r`n" + $insertion }, 1)
+        $avrPinsModified = $true
+        Write-Output "Patched avrpins.h with missing Core/Core2 pin aliases."
+    }
 
-        $insertion = ($missingPins -join "`r`n")
-        $avrPinsText = $regex.Replace($avrPinsText, { param($m) $m.Value + "`r`n" + $insertion }, 1)
+    # --- Patch 2: CoreS3 用 P10 (CORES3 ブロックに挿入) ---
+    # P10 は ESP32 汎用ブロックには存在するが CORES3 ブロックには存在しない。
+    # CoreS3 ビルドでは #elif により ESP32 ブロックがスキップされるため、
+    # CORES3 ブロック末尾 (MAKE_PIN(P14, 14); // INT の後) に追加する必要がある。
+    $coreS3P10Pattern = 'MAKE_PIN\(P10,\s*10\)'
+    $coreS3BlockPattern = '(?s)(?<=#elif defined\(ARDUINO_M5STACK_CORES3\)).*?(?=#elif|#else|#endif|\z)'
+    $coreS3Block = [regex]::Match($avrPinsText, $coreS3BlockPattern)
+    $p10InCoreS3 = $coreS3Block.Success -and ($coreS3Block.Value -match $coreS3P10Pattern)
+
+    if (!$p10InCoreS3) {
+        # CORES3 ブロックの末尾マーカー (MAKE_PIN(P14, 14); // INT) の後に挿入
+        $coreS3MarkerPattern = 'MAKE_PIN\(P14,\s*14\);\s*// INT'
+        $coreS3Regex = [regex]$coreS3MarkerPattern
+        if (!$coreS3Regex.IsMatch($avrPinsText)) {
+            throw "Could not find CoreS3 insertion marker in avrpins.h: $coreS3MarkerPattern"
+        }
+        $p10Line = "MAKE_PIN(P10, 10); // CoreS3 INT CH1"
+        $avrPinsText = $coreS3Regex.Replace($avrPinsText, { param($m) $m.Value + "`r`n" + $p10Line }, 1)
+        $avrPinsModified = $true
+        Write-Output "Patched avrpins.h with CoreS3 P10 pin alias."
+    }
+
+    if ($avrPinsModified) {
         Set-Content -Path $avrPinsPath -Value $avrPinsText -Encoding UTF8
-        Write-Output "Patched avrpins.h with missing ESP32 pin aliases."
+    }
+    else {
+        Write-Output "avrpins.h already up to date."
     }
 
+    # --- Patch 3: UsbCore.h (CoreS3 / ESP32 両ブロックに #ifndef ガードを追加) ---
     $usbCoreText = Get-Content -Path $usbCorePath -Raw
     if ($usbCoreText -notmatch "USB_HOST_SHIELD_SS_TYPE") {
-        # CoreS3 ブロックにもガードを追加
         $needleCoreS3 = "typedef MAX3421e<P1, P14> MAX3421E; // M5Stack Core S3"
         $replacementCoreS3 = @"
 #ifndef USB_HOST_SHIELD_SS_TYPE
@@ -184,8 +217,6 @@ function Update-UsbHostShieldLibrary {
 #endif
 typedef MAX3421e<USB_HOST_SHIELD_SS_TYPE, USB_HOST_SHIELD_INT_TYPE> MAX3421E; // M5Stack Core S3 (customizable)
 "@
-
-        # ESP32 汎用ブロックにもガードを追加
         $needleEsp32 = "typedef MAX3421e<P5, P17> MAX3421E; // ESP32 boards"
         $replacementEsp32 = @"
 #ifndef USB_HOST_SHIELD_SS_TYPE
@@ -196,7 +227,6 @@ typedef MAX3421e<USB_HOST_SHIELD_SS_TYPE, USB_HOST_SHIELD_INT_TYPE> MAX3421E; //
 #endif
 typedef MAX3421e<USB_HOST_SHIELD_SS_TYPE, USB_HOST_SHIELD_INT_TYPE> MAX3421E; // ESP32 boards (customizable)
 "@
-
         $patched = $false
         if ($usbCoreText.Contains($needleCoreS3)) {
             $usbCoreText = $usbCoreText.Replace($needleCoreS3, $replacementCoreS3.Trim())
@@ -206,7 +236,6 @@ typedef MAX3421e<USB_HOST_SHIELD_SS_TYPE, USB_HOST_SHIELD_INT_TYPE> MAX3421E; //
             $usbCoreText = $usbCoreText.Replace($needleEsp32, $replacementEsp32.Trim())
             $patched = $true
         }
-
         if ($patched) {
             Set-Content -Path $usbCorePath -Value $usbCoreText -Encoding UTF8
             Write-Output "Patched UsbCore.h for customizable ESP32/CoreS3 SS/INT pins."
@@ -214,6 +243,9 @@ typedef MAX3421e<USB_HOST_SHIELD_SS_TYPE, USB_HOST_SHIELD_INT_TYPE> MAX3421E; //
         else {
             throw "Expected ESP32/CoreS3 typedef was not found in UsbCore.h"
         }
+    }
+    else {
+        Write-Output "UsbCore.h already patched."
     }
 }
 
