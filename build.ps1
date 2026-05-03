@@ -289,8 +289,9 @@ Write-Output "FQBN: $FQBN"
 $SsType = "P$SelectedSsGpio"
 $IntType = "P$SelectedIntGpio"
 
+# compiler.cpp/c.extra_flags を使用する（build.extra_flags はボードコアの
+# 内部フラグを上書きしてしまうため使用しない）
 $ExtraFlags = @(
-    "-DESP32",
     "-DUSB_HOST_SHIELD_SS_TYPE=$SsType",
     "-DUSB_HOST_SHIELD_INT_TYPE=$IntType",
     "-DPIN_SPI_SCK=$SelectedSckGpio",
@@ -311,7 +312,8 @@ $CompileArgs = @(
     "compile",
     "--fqbn", $FQBN,
     "--libraries", $UserLibrariesDir,
-    "--build-property", "build.extra_flags=$ExtraFlags"
+    "--build-property", "compiler.cpp.extra_flags=$ExtraFlags",
+    "--build-property", "compiler.c.extra_flags=$ExtraFlags"
 )
 if ($ExportBinaries) {
     $CompileArgs += "--export-binaries"
