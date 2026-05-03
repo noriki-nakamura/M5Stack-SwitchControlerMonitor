@@ -145,21 +145,35 @@ function Update-UsbHostShieldLibrary {
     $avrPinsModified = $false
 
     # --- Patch 1: Core/Core2 用ピン (ESP32 汎用ブロックに挿入) ---
-    # コメントは除いて MAKE_PIN(Pxx, nn) のみで存在確認する
+    # 存在チェックは ESP32 ブロック内に限定する。
+    # avrpins.h には Teensy/SAM DUE 等の他ブロックにも同名ピンが存在するため、
+    # ファイル全体を検索すると誤判定してしまう。
     $esp32PinDefs = @(
         @{ Pin = "P13"; Num = 13; Comment = "Extra SS for M5Stack Core" },
         @{ Pin = "P33"; Num = 33; Comment = "Extra SS for M5Stack Core2" },
         @{ Pin = "P34"; Num = 34; Comment = "Extra INT for M5Stack Core/Core2" },
-        @{ Pin = "P35"; Num = 35; Comment = "Extra INT for M5Stack Core/Core2" },
+        @{ Pin = "P35"; Num = 35; Comment = "Extra INT for M5Stack Core/Core2 / CoreS3 MISO" },
+        @{ Pin = "P36"; Num = 36; Comment = "CoreS3 SCK" },
+        @{ Pin = "P37"; Num = 37; Comment = "CoreS3 MOSI" },
         @{ Pin = "P38"; Num = 38; Comment = "Core2 MISO" }
     )
 
+    # ESP32 ブロックのテキストを抽出
+    $esp32BlockPattern = '(?s)(?<=#elif defined\(ESP32\)).*?(?=#\s*undef MAKE_PIN|#elif|#else|#endif|\z)'
+    $esp32Block = [regex]::Match($avrPinsText, $esp32BlockPattern)
+
     $missingEsp32Pins = @()
-    foreach ($def in $esp32PinDefs) {
-        $pattern = "MAKE_PIN\($($def.Pin),\s*$($def.Num)\)"
-        if ($avrPinsText -notmatch $pattern) {
-            $missingEsp32Pins += "MAKE_PIN($($def.Pin), $($def.Num)); // $($def.Comment)"
+    if ($esp32Block.Success) {
+        $esp32BlockText = $esp32Block.Value
+        foreach ($def in $esp32PinDefs) {
+            $pattern = "MAKE_PIN\($($def.Pin),\s*$($def.Num)\)"
+            if ($esp32BlockText -notmatch $pattern) {
+                $missingEsp32Pins += "MAKE_PIN($($def.Pin), $($def.Num)); // $($def.Comment)"
+            }
         }
+    }
+    else {
+        Write-Output "Warning: Could not find ESP32 block in avrpins.h. Skipping Core/Core2 pin patch."
     }
 
     if ($missingEsp32Pins.Count -gt 0) {
