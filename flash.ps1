@@ -43,8 +43,7 @@ if ($BinDir -eq "") {
     if (Test-Path $DefaultBinDir) {
         $BinDir = $DefaultBinDir
         Write-Output "Using default binary directory: $BinDir"
-    }
-    else {
+    } else {
         # Try to find any subdirectory under build/
         $BuildRoot = Join-Path $PSScriptRoot "build"
         if (Test-Path $BuildRoot) {
@@ -71,14 +70,12 @@ $BinFile = ""
 if (Test-Path $BinDir -PathType Leaf) {
     # Directly pointed to a file
     $BinFile = (Get-Item $BinDir).FullName
-}
-else {
+} else {
     # Search in directory
     $SketchBin = Join-Path $BinDir "$SketchName.ino.bin"
     if (Test-Path $SketchBin) {
         $BinFile = $SketchBin
-    }
-    else {
+    } else {
         Write-Output "Searching for .bin files in: $BinDir"
         $bins = Get-ChildItem -Path $BinDir -Filter "*.bin" -Recurse -ErrorAction SilentlyContinue | Where-Object { $_.Name -notmatch "bootloader|partitions" }
         if ($bins.Count -eq 0) {
@@ -104,8 +101,7 @@ if ($BinFile -ne "") {
         Write-Warning "Expected: $(Split-Path $BootFile -Leaf) and $(Split-Path $PartFile -Leaf)"
         Write-Warning "Uploading might fail if these are required for your board."
     }
-}
-else {
+} else {
     Write-Error "Could not determine binary file path."
     exit 1
 }
@@ -123,8 +119,7 @@ if ($Port -eq "") {
             break
         }
     }
-}
-else {
+} else {
     Write-Output "Using specified port: $Port"
 }
 
@@ -140,8 +135,7 @@ arduino-cli upload -p $Port --fqbn $FQBN --input-file $BinFile
 
 if ($LASTEXITCODE -eq 0) {
     Write-Output "Upload successful!"
-}
-else {
+} else {
     Write-Output "Upload failed!"
     exit 1
 }
